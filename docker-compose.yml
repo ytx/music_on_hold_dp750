@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  moh-server:
+    build: .
+    container_name: music-on-hold-server
+    ports:
+      - "5060:5060/udp"
+      - "10000-10100:10000-10100/udp"
+    volumes:
+      - "./music.mp3:/music.mp3:ro"
+    restart: unless-stopped
+    networks:
+      - moh-network
+
+networks:
+  moh-network:
+    driver: bridge
