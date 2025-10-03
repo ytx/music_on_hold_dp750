@@ -9,7 +9,8 @@
 - ffmpegによるRTPストリーミング
 - ループ再生対応
 - 認証不要のシンプル構成
-- Docker化で簡単デプロイ
+- Docker と Raspberry Pi の両方に対応
+- Ansible Playbookによる自動セットアップ（Raspberry Pi）
 
 ## 必要なファイル
 
@@ -17,7 +18,9 @@
 
 ## 使用方法
 
-### 1. 音源ファイルの準備
+### Docker環境
+
+#### 1. 音源ファイルの準備
 
 プロジェクトディレクトリに `music.mp3` ファイルを配置してください。
 
@@ -26,13 +29,27 @@
 cp /path/to/your/music.mp3 ./music.mp3
 ```
 
-### 2. サーバーの起動
+#### 2. サーバーの起動
 
 ```bash
 docker-compose up -d
 ```
 
-### 3. Grandstream DP750の設定
+#### 3. 動作確認
+
+```bash
+# ログの確認
+docker-compose logs -f
+
+# コンテナの状態確認
+docker-compose ps
+```
+
+### Raspberry Pi環境
+
+Raspberry Pi OS Lite での自動セットアップについては、[ansible/README.md](ansible/README.md) を参照してください。
+
+### Grandstream DP750の設定
 
 DP750の管理画面で以下を設定：
 
@@ -47,16 +64,6 @@ sip:123@192.168.1.100:5060
 - 「123」は任意の番号です（例：`sip:999@192.168.1.100:5060`、`sip:moh@192.168.1.100:5060`）
 - サーバーはどの番号でも同じようにMusic On Holdを開始します
 
-### 4. 動作確認
-
-```bash
-# ログの確認
-docker-compose logs -f
-
-# コンテナの状態確認
-docker-compose ps
-```
-
 ## 動作確認とテスト
 
 ### Pythonテストスクリプト
@@ -64,14 +71,24 @@ docker-compose ps
 サーバーの動作確認用のテストスクリプトが含まれています：
 
 ```bash
+# UDP接続テスト
+python3 test_udp.py [サーバーIP]
+
 # SIPサーバーのテスト実行
+python3 test_sip_client.py [サーバーIP]
+
+# 例（ローカルホスト）
 python3 test_sip_client.py
+
+# 例（Raspberry Pi）
+python3 test_sip_client.py 192.168.52.174
 ```
 
 このテストスクリプトは以下を確認します：
 - SIP OPTIONS メッセージの応答
 - SIP INVITE → 180 Ringing → 200 OK の流れ
 - Music On Hold（RTPストリーム）の開始
+- ACK/BYE メッセージの処理
 
 ### SIPクライアントでの動作確認
 
@@ -96,12 +113,22 @@ Transport: UDP
 
 ### ログ確認
 
+**Docker環境:**
 ```bash
 # サーバーログの確認
 docker-compose logs -f
 
 # コンテナの状態確認
 docker-compose ps
+```
+
+**Raspberry Pi環境:**
+```bash
+# サービス状態確認
+ssh pi-moh "systemctl status moh-server"
+
+# ログ確認
+ssh pi-moh "journalctl -u moh-server -f"
 ```
 
 ## ポート設定
@@ -135,14 +162,20 @@ docker-compose ps
 ├── test_udp.py                 # UDP接続テスト用
 ├── music.mp3                   # 音源ファイル（ユーザーが配置）
 ├── README.md
-└── CLAUDE.md
+├── CLAUDE.md
+└── ansible/
+    ├── inventory.ini           # Ansibleホスト定義
+    ├── playbook.yml            # 自動セットアップPlaybook
+    └── README.md               # Ansible実行手順
 ```
 
 ## 技術仕様
 
-- **ベースイメージ**: Python 3.9-slim
+- **Docker環境**: Python 3.9-slim
+- **Raspberry Pi環境**: Python 3（OS標準）
 - **SIPサーバー**: 軽量Python実装
 - **RTPストリーミング**: ffmpeg
 - **音声コーデック**: PCMU (G.711 μ-law)
 - **音声形式**: 8kHz, モノラル, PCM
-- **同時接続数**: 制限なし（必要に応じて制限可能）# music_on_hold_dp750
+- **同時接続数**: 制限なし（必要に応じて制限可能）
+- **デプロイ方法**: Docker compose または Ansible Playbook# music_on_hold_dp750

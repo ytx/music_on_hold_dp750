@@ -191,6 +191,9 @@ a=sendonly
                 self.handle_invite(sock, addr, request_lines)
             elif method == 'BYE':
                 self.handle_bye(sock, addr, request_lines)
+            elif method == 'ACK':
+                # ACK is fire-and-forget, no response needed
+                self.log("ACK received - no response needed")
             elif method in ['REGISTER', 'OPTIONS']:
                 # Send 200 OK for REGISTER/OPTIONS
                 ok_response = self.create_sip_response(request_lines, 200, "OK")

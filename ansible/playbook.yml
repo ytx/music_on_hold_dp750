@@ -1,0 +1,268 @@
+---
+- name: Setup Music On Hold SIP Server on Raspberry Pi
+  hosts: moh_servers
+  become: yes
+
+  vars:
+    moh_user: moh
+    moh_group: moh
+    moh_install_dir: /opt/moh-server
+    moh_sounds_dir: /opt/moh-server/sounds
+    project_root: "{{ playbook_dir }}/.."
+
+  tasks:
+    # 1. システム準備
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - ffmpeg
+          - sox
+        state: present
+
+    # 2. 専用ユーザー作成
+    - name: Create moh system user
+      user:
+        name: "{{ moh_user }}"
+        system: yes
+        shell: /usr/sbin/nologin
+        create_home: no
+        state: present
+
+    # 3. アプリケーションディレクトリ作成
+    - name: Create moh-server directory
+      file:
+        path: "{{ moh_install_dir }}"
+        state: directory
+        owner: "{{ moh_user }}"
+        group: "{{ moh_group }}"
+        mode: '0755'
+
+    - name: Create sounds directory
+      file:
+        path: "{{ moh_sounds_dir }}"
+        state: directory
+        owner: "{{ moh_user }}"
+        group: "{{ moh_group }}"
+        mode: '0755'
+
+    # 4. ファイル転送（シンボリックリンクの実体を転送）
+    - name: Check if music.mp3 exists
+      stat:
+        path: "{{ project_root }}/music.mp3"
+      delegate_to: localhost
+      become: no
+      register: music_file
+
+    - name: Fail if music.mp3 is missing
+      fail:
+        msg: "music.mp3 not found in project root"
+      when: not music_file.stat.exists
+
+    - name: Copy sip_server.py
+      copy:
+        src: "{{ project_root }}/sip_server.py"
+        dest: "{{ moh_install_dir }}/sip_server.py"
+        owner: "{{ moh_user }}"
+        group: "{{ moh_group }}"
+        mode: '0644'
+        follow: yes
+
+    - name: Copy start.sh
+      copy:
+        src: "{{ project_root }}/start.sh"
+        dest: "{{ moh_install_dir }}/start.sh"
+        owner: "{{ moh_user }}"
+        group: "{{ moh_group }}"
+        mode: '0755'
+        follow: yes
+
+    - name: Copy music.mp3
+      copy:
+        src: "{{ project_root }}/music.mp3"
+        dest: "{{ moh_install_dir }}/music.mp3"
+        owner: "{{ moh_user }}"
+        group: "{{ moh_group }}"
+        mode: '0644'
+        follow: yes
+
+    - name: Copy test_sip_client.py
+      copy:
+        src: "{{ project_root }}/test_sip_client.py"
+        dest: "{{ moh_install_dir }}/test_sip_client.py"
+        owner: "{{ moh_user }}"
+        group: "{{ moh_group }}"
+        mode: '0644'
+        follow: yes
+
+    - name: Copy test_udp.py
+      copy:
+        src: "{{ project_root }}/test_udp.py"
+        dest: "{{ moh_install_dir }}/test_udp.py"
+        owner: "{{ moh_user }}"
+        group: "{{ moh_group }}"
+        mode: '0644'
+        follow: yes
+
+    # 5. start.sh のパス修正
+    - name: Update music.mp3 check path in start.sh (if statement)
+      lineinfile:
+        path: "{{ moh_install_dir }}/start.sh"
+        regexp: '^if \[ -f "/music\.mp3" \]; then$'
+        line: 'if [ -f "/opt/moh-server/music.mp3" ]; then'
+
+    - name: Update music.mp3 path in start.sh (ffmpeg input)
+      lineinfile:
+        path: "{{ moh_install_dir }}/start.sh"
+        regexp: '^(.*)ffmpeg -i /music\.mp3(.*)$'
+        line: '\1ffmpeg -i /opt/moh-server/music.mp3\2'
+        backrefs: yes
+
+    - name: Update music.wav output path in start.sh
+      lineinfile:
+        path: "{{ moh_install_dir }}/start.sh"
+        regexp: '^(.*)-f wav /app/sounds/music\.wav(.*)$'
+        line: '\1-f wav /opt/moh-server/sounds/music.wav\2'
+        backrefs: yes
+
+    - name: Update ls command path in start.sh
+      lineinfile:
+        path: "{{ moh_install_dir }}/start.sh"
+        regexp: '^(.*)ls -la /app/sounds/(.*)$'
+        line: '\1ls -la /opt/moh-server/sounds/\2'
+        backrefs: yes
+
+    - name: Update audio file path check in start.sh (ffprobe)
+      lineinfile:
+        path: "{{ moh_install_dir }}/start.sh"
+        regexp: '^(.*)ffprobe /app/sounds/music\.wav(.*)$'
+        line: '\1ffprobe /opt/moh-server/sounds/music.wav\2'
+        backrefs: yes
+
+    - name: Update error message path in start.sh
+      lineinfile:
+        path: "{{ moh_install_dir }}/start.sh"
+        regexp: '^    echo "Error: No music file found at /music\.mp3"$'
+        line: '    echo "Error: No music file found at /opt/moh-server/music.mp3"'
+
+    - name: Update error message mount instruction in start.sh
+      lineinfile:
+        path: "{{ moh_install_dir }}/start.sh"
+        regexp: '^    echo "Please mount your MP3 file to /music\.mp3"$'
+        line: '    echo "Please place your MP3 file at /opt/moh-server/music.mp3"'
+
+    - name: Update working directory in start.sh
+      lineinfile:
+        path: "{{ moh_install_dir }}/start.sh"
+        regexp: '^cd /app$'
+        line: 'cd /opt/moh-server'
+
+    - name: Update sip_server.py execution path in start.sh
+      lineinfile:
+        path: "{{ moh_install_dir }}/start.sh"
+        regexp: '^exec python3 sip_server\.py$'
+        line: 'exec python3 /opt/moh-server/sip_server.py'
+
+    # 6. sip_server.py のデフォルト音声ファイルパス修正
+    - name: Update default audio file path in sip_server.py
+      lineinfile:
+        path: "{{ moh_install_dir }}/sip_server.py"
+        regexp: '^(\s+self\.audio_file = ).*$'
+        line: '\1"/opt/moh-server/sounds/music.wav"'
+        backrefs: yes
+
+    # 7. WAVファイルの事前変換（overlayfs対応）
+    - name: Pre-convert music.mp3 to WAV format
+      command: >
+        ffmpeg -y -i {{ moh_install_dir }}/music.mp3
+        -ar 8000 -ac 1 -c:a pcm_s16le -f wav
+        {{ moh_sounds_dir }}/music.wav
+      args:
+        creates: "{{ moh_sounds_dir }}/music.wav"
+
+    - name: Set ownership of converted WAV file
+      file:
+        path: "{{ moh_sounds_dir }}/music.wav"
+        owner: "{{ moh_user }}"
+        group: "{{ moh_group }}"
+        mode: '0644'
+
+    # 8. systemd サービス作成
+    - name: Create systemd service file
+      copy:
+        dest: /etc/systemd/system/moh-server.service
+        content: |
+          [Unit]
+          Description=Music On Hold SIP Server
+          After=network.target
+
+          [Service]
+          Type=simple
+          User={{ moh_user }}
+          Group={{ moh_group }}
+          WorkingDirectory={{ moh_install_dir }}
+          ExecStart={{ moh_install_dir }}/start.sh
+          Restart=always
+          RestartSec=10
+          StandardOutput=journal
+          StandardError=journal
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+      notify: reload systemd
+
+    # 9. swap 無効化（overlayfs準備）
+    - name: Disable swap immediately
+      command: swapoff -a
+      ignore_errors: yes
+
+    - name: Set swap size to 0 in dphys-swapfile
+      lineinfile:
+        path: /etc/dphys-swapfile
+        regexp: '^CONF_SWAPSIZE='
+        line: 'CONF_SWAPSIZE=0'
+        create: yes
+
+    - name: Stop dphys-swapfile service
+      systemd:
+        name: dphys-swapfile
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+
+    # 10. サービス有効化と起動
+    - name: Enable moh-server service
+      systemd:
+        name: moh-server
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Start moh-server service
+      systemd:
+        name: moh-server
+        state: restarted
+
+    - name: Wait for service to start
+      wait_for:
+        timeout: 5
+
+    - name: Check moh-server service status
+      systemd:
+        name: moh-server
+      register: service_status
+
+    - name: Display service status
+      debug:
+        msg: "moh-server service is {{ service_status.status.ActiveState }}"
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes

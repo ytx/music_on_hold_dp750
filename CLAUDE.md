@@ -14,25 +14,30 @@ Grandstream DP750の「Music On Hold URI」で使用するための専用SIPサ�
 ### フェーズ2: Python軽量実装（成功）
 Asteriskの複雑さを回避し、軽量なPython実装に変更。
 
+### フェーズ3: Ansible自動デプロイ（完成）
+Raspberry Pi OS Lite向けのAnsible Playbookを作成し、自動セットアップを実現。
+
 ## 要件定義
 
 ### 基本要件
-- **プラットフォーム**: Docker
-- **音源形式**: MP3ファイル（起動時にバインド）
+- **プラットフォーム**: Docker または Raspberry Pi OS Lite（ベアメタル）
+- **音源形式**: MP3ファイル（起動時にバインド/配置）
 - **音声処理**: 起動時に適切な形式に変換
 - **再生方式**: ループ再生
 - **対象機器**: Grandstream DP750
 
 ### 技術仕様（最終）
 - **SIPサーバー**: 軽量Python実装
-- **ベースイメージ**: Python 3.9-slim
+- **Docker環境**: Python 3.9-slim
+- **Raspberry Pi環境**: Python 3（OS標準）
 - **音声コーデック**: PCMU（G.711 μ-law）
 - **RTPストリーミング**: ffmpeg
 - **ネットワーク**: SIP 5060、RTP 10000-10100（動的割り当て）
 - **認証**: なし（オープン）
 - **同時接続数**: 制限なし
-- **音源ファイル**: 1ファイル直接バインド（`-v /path/to/music.mp3:/music.mp3`）
-- **デプロイ**: docker-compose.yml
+- **デプロイ方法**:
+  - Docker: docker-compose.yml
+  - Raspberry Pi: Ansible Playbook
 
 ## 実装内容
 
@@ -55,13 +60,24 @@ Asteriskの複雑さを回避し、軽量なPython実装に変更。
 - Python SIPサーバー起動
 
 ### 4. テストスクリプト
-- **test_sip_client.py**: 完全なSIPクライアント実装
-- **test_udp.py**: UDP接続確認用
+- **test_sip_client.py**: 完全なSIPクライアント実装（IPアドレス指定可能）
+- **test_udp.py**: UDP接続確認用（IPアドレス指定可能）
 
 ### 5. docker-compose.yml
 - ポートマッピング（5060/udp、10000-10100/udp）
 - 音源ファイルバインド
 - ネットワーク設定
+
+### 6. Ansible Playbook（ansible/）
+- **inventory.ini**: ホスト定義
+- **playbook.yml**: 自動セットアップPlaybook
+  - システムパッケージインストール
+  - 専用ユーザー（moh）作成
+  - ファイル転送とパス修正
+  - WAV事前変換（overlayfs対応）
+  - systemdサービス作成
+  - swap無効化
+- **README.md**: 実行手順とトラブルシューティング
 
 ## ファイル構成
 
@@ -73,15 +89,28 @@ moh/
 ├── sip_server.py           # メインSIPサーバー
 ├── test_sip_client.py      # テストクライアント
 ├── test_udp.py            # UDP接続テスト
+├── music.mp3              # 音源ファイル
 ├── README.md
-└── CLAUDE.md
+├── CLAUDE.md
+└── ansible/
+    ├── inventory.ini      # Ansibleホスト定義
+    ├── playbook.yml       # 自動セットアップPlaybook
+    └── README.md          # Ansible実行手順
 ```
 
 ## 使用方法
 
+### Docker環境
 1. 音源ファイル配置: `music.mp3`
 2. サーバー起動: `docker-compose up -d`
 3. DP750設定: Music On Hold URI = `sip:123@[サーバーIP]:5060`
+
+### Raspberry Pi環境
+1. 音源ファイル配置: `music.mp3`
+2. Ansible実行: `cd ansible && ansible-playbook -i inventory.ini playbook.yml`
+3. DP750設定: Music On Hold URI = `sip:123@[サーバーIP]:5060`
+
+詳細は `ansible/README.md` を参照。
 
 ## 特徴
 
@@ -89,7 +118,10 @@ moh/
 - **シンプル**: 認証不要、設定最小限
 - **自動変換**: MP3を起動時にPCM形式に変換
 - **ループ再生**: ffmpegによる音源の途切れない再生
-- **テスト対応**: 包括的なテストスクリプト付属
+- **テスト対応**: 包括的なテストスクリプト付属（IPアドレス指定可能）
+- **柔軟なデプロイ**: Docker と Raspberry Pi の両方に対応
+- **自動化**: Ansible Playbookによる完全自動セットアップ
+- **overlayfs対応**: Raspberry Piの読み取り専用ファイルシステムに対応
 
 ## 技術的なポイント
 
@@ -102,13 +134,18 @@ moh/
 ## 開発の成果
 
 ✅ **成功**: Music On Hold SIPサーバーが正常動作
-- SIP OPTIONS/INVITE/BYEの基本機能
+- SIP OPTIONS/INVITE/ACK/BYEの基本機能
 - RTPストリーミングによる音楽配信
 - Grandstream DP750対応
 - Docker化で簡単デプロイ
+- Ansible Playbookによる自動セットアップ
+- Raspberry Pi OS Lite対応
 
 ## トラブルシューティング履歴
 
 1. **Asterisk Stasisエラー**: Python実装への変更で解決
 2. **macOS Docker networking**: 実際は問題なし、テスト方法の改善で解決
 3. **SIP URIフォーマット**: `sip:123@server:5060`形式の確認
+4. **ACK処理**: ACKメッセージの適切な処理（応答不要）を追加
+5. **Ansible パス修正**: start.shの全パスを正しく置換するよう修正
+6. **テストスクリプト**: IPアドレス指定をコマンドライン引数で可能に

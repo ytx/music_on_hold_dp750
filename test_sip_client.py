@@ -272,12 +272,19 @@ User-Agent: TestSIPClient/1.0
                 self.socket.close()
 
 def main():
+    import sys
+
     print("SIP Client Test Script")
     print("======================")
 
-    # Default to localhost for Docker testing
-    server_ip = "127.0.0.1"
+    # Get server IP from command line argument or default to localhost
+    if len(sys.argv) > 1:
+        server_ip = sys.argv[1]
+    else:
+        server_ip = "127.0.0.1"
+
     print(f"Testing server at {server_ip}")
+    print()
 
     client = SimpleSIPClient(server_host=server_ip)
     client.run_tests()
