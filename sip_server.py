@@ -227,12 +227,10 @@ a=sendonly
 
             self.log("SIP server started - waiting for connections...")
             self.log("Server is ready to receive SIP messages")
-            self.log("DEBUG: Socket successfully bound and listening")
 
             packet_count = 0
             while True:
                 try:
-                    self.log("DEBUG: About to call recvfrom()...")
                     data, addr = sock.recvfrom(4096)
                     packet_count += 1
                     self.log(f"*** PACKET #{packet_count} RECEIVED from {addr[0]}:{addr[1]} ***")
